@@ -1,5 +1,5 @@
 import './styles.css';
-import { listCards, createCard, updateCard, deleteCard } from './api.js';
+import { listCards, createCard, updateCard, deleteCard, renameFolder as renameFolderApi } from './api.js';
 import { startScanner, renderBarcode, supportsCamera, isSecureContext } from './barcode.js';
 
 const app = document.getElementById('app');
@@ -14,6 +14,7 @@ let toastTimer = null;
 let activeStopCamera = null;
 let activeFolder = null;
 let searchQuery = '';
+let sortBy = 'recent';
 let homeGridEl = null;
 let folderBarEl = null;
 
@@ -89,7 +90,26 @@ function buildHome() {
     renderFolderBar();
   });
   searchBox.appendChild(searchInput);
-  root.appendChild(searchBox);
+
+  const mkOption = (v, label) => {
+    const o = h('option', '', label);
+    o.value = v;
+    return o;
+  };
+  const sortSelect = h('select', 'form__input form__select sort-select');
+  sortSelect.appendChild(mkOption('recent', 'Recently used'));
+  sortSelect.appendChild(mkOption('name', 'Name A\u2013Z'));
+  sortSelect.appendChild(mkOption('created', 'Newest first'));
+  sortSelect.value = sortBy;
+  sortSelect.addEventListener('change', () => {
+    sortBy = sortSelect.value;
+    renderGrid();
+  });
+
+  const toolbar = h('div', 'home-toolbar');
+  toolbar.appendChild(searchBox);
+  toolbar.appendChild(sortSelect);
+  root.appendChild(toolbar);
 
   folderBarEl = h('div', 'folder-bar');
   root.appendChild(folderBarEl);
@@ -129,8 +149,40 @@ function renderFolderBar() {
 
   folderBarEl.appendChild(chip('All', null, cards.length));
   collectFolders().forEach(([f, n]) => {
-    if (f !== '') folderBarEl.appendChild(chip(f, f, n));
+    if (f === '') return;
+    const group = h('div', 'folder-chip-group');
+    group.appendChild(chip(f, f, n));
+    const edit = h('button', 'folder-chip-edit', '\u270E');
+    edit.type = 'button';
+    edit.title = 'Rename folder';
+    edit.addEventListener('click', (e) => {
+      e.stopPropagation();
+      renameFolder(f);
+    });
+    group.appendChild(edit);
+    folderBarEl.appendChild(group);
   });
+}
+
+async function renameFolder(oldName) {
+  const input = (prompt(`Rename folder "${oldName}" to:`, oldName) || '').trim();
+  if (!input || input === oldName) return;
+  if (cards.some((c) => (c.folder || '').trim() === input)) {
+    toast('A folder with that name already exists');
+    return;
+  }
+  try {
+    await renameFolderApi(oldName, input);
+    cards.forEach((c) => {
+      if ((c.folder || '').trim() === oldName) c.folder = input;
+    });
+    if (activeFolder === oldName) activeFolder = input;
+    toast('Folder renamed');
+    renderFolderBar();
+    renderGrid();
+  } catch (err) {
+    toast('Rename failed: ' + err.message);
+  }
 }
 
 function filteredCards() {
@@ -141,6 +193,29 @@ function filteredCards() {
     if (!q) return true;
     return `${c.name} ${c.barcode} ${c.notes || ''} ${folder}`.toLowerCase().includes(q);
   });
+}
+
+function sortedCards(list) {
+  const arr = [...list];
+  switch (sortBy) {
+    case 'name':
+      arr.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+      break;
+    case 'created':
+      arr.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+      break;
+    default: {
+      arr.sort((a, b) => {
+        const la = a.lastUsed || '';
+        const lb = b.lastUsed || '';
+        if (la && lb) return lb.localeCompare(la);
+        if (la) return -1;
+        if (lb) return 1;
+        return (b.createdAt || '').localeCompare(a.createdAt || '');
+      });
+    }
+  }
+  return arr;
 }
 
 function renderGrid() {
@@ -162,7 +237,7 @@ function renderGrid() {
     return;
   }
 
-  filtered.forEach((card) => homeGridEl.appendChild(buildTile(card)));
+  sortedCards(filtered).forEach((card) => homeGridEl.appendChild(buildTile(card)));
 }
 
 function buildTile(card) {
@@ -188,6 +263,10 @@ function openDetail(id) {
   const card = cards.find((c) => c.id === id);
   if (!card) return;
   addBtn.style.display = 'none';
+
+  const now = new Date().toISOString();
+  card.lastUsed = now;
+  updateCard(card.id, { lastUsed: now }).catch(() => {});
 
   const detail = h('div', 'detail');
   const head = h('div', 'detail__head');
@@ -311,7 +390,7 @@ function buildForm(card = {}) {
   const swatches = h('div', 'swatches');
 
   const setSelected = (el) => {
-    swatches.querySelectorAll('.swatch').forEach((x) => x.classList.remove('selected'));
+    swatches.querySelectorAll('.swatch, .swatch-picker-wrap').forEach((x) => x.classList.remove('selected'));
     el.classList.add('selected');
   };
 
@@ -328,15 +407,18 @@ function buildForm(card = {}) {
     swatches.appendChild(s);
   });
 
-  const colorPicker = h('input', 'swatch swatch-picker');
+  const colorPickerWrap = h('label', 'swatch-picker-wrap');
+  colorPickerWrap.title = 'Custom color';
+  const colorPicker = h('input', 'swatch-picker');
   colorPicker.type = 'color';
   colorPicker.value = color;
   colorPicker.addEventListener('input', () => {
-    setSelected(colorPicker);
+    setSelected(colorPickerWrap);
     colorInput.value = colorPicker.value;
   });
-  if (!COLORS.includes(color)) setSelected(colorPicker);
-  swatches.appendChild(colorPicker);
+  colorPickerWrap.appendChild(colorPicker);
+  if (!COLORS.includes(color)) setSelected(colorPickerWrap);
+  swatches.appendChild(colorPickerWrap);
 
   const colorInput = h('input', 'form__color-input');
   colorInput.type = 'hidden';

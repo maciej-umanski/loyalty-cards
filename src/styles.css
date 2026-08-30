@@ -100,6 +100,24 @@ main {
   gap: 12px;
 }
 
+.home-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.home-toolbar .search {
+  flex: 1;
+  min-width: 0;
+}
+
+.sort-select {
+  flex: 0 0 auto;
+  width: auto;
+  padding: 12px 34px 12px 14px;
+  cursor: pointer;
+}
+
 .search__input {
   width: 100%;
   font: inherit;
@@ -144,6 +162,43 @@ main {
   background: var(--accent);
   border-color: var(--accent);
   color: #fff;
+}
+
+.folder-chip-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  background: var(--bg-2);
+  border: 1px solid var(--bg-3);
+  border-radius: 999px;
+  padding: 2px 4px 2px 2px;
+}
+
+.folder-chip-group .folder-chip {
+  background: transparent;
+  border: none;
+  padding: 4px 8px;
+}
+
+.folder-chip-group .folder-chip.selected {
+  background: var(--accent);
+}
+
+.folder-chip-edit {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  padding: 6px 7px;
+  border-radius: 999px;
+}
+
+.folder-chip-edit:hover {
+  background: var(--bg-3);
+  color: var(--text);
 }
 
 .folder-chip__count {
@@ -456,26 +511,48 @@ main {
   border-color: rgba(255, 255, 255, 0.6);
 }
 
-.swatch.swatch-picker {
+.swatch.swatch-picker-wrap,
+.swatch-picker-wrap {
+  position: relative;
+  display: inline-block;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: conic-gradient(#ff0000, #ffff00, #00ff00, #00ffff, #0000ff, #ff00ff, #ff0000);
+  cursor: pointer;
+}
+
+.swatch-picker-wrap .swatch-picker {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  width: 26px;
+  height: 26px;
   -webkit-appearance: none;
   appearance: none;
   padding: 0;
-  background: none;
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
 }
 
-.swatch.swatch-picker::-webkit-color-swatch-wrapper {
+.swatch-picker-wrap .swatch-picker::-webkit-color-swatch-wrapper {
   padding: 0;
   border-radius: 50%;
 }
 
-.swatch.swatch-picker::-webkit-color-swatch {
+.swatch-picker-wrap .swatch-picker::-webkit-color-swatch {
   border: none;
   border-radius: 50%;
 }
 
-.swatch.swatch-picker::-moz-color-swatch {
+.swatch-picker-wrap .swatch-picker::-moz-color-swatch {
   border: none;
   border-radius: 50%;
+}
+
+.swatch-picker-wrap.selected {
+  box-shadow: 0 0 0 2px var(--bg), 0 0 0 3px #fff;
 }
 
 .swatch.selected {

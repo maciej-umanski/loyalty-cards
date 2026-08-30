@@ -48,7 +48,7 @@ app.get('/api/cards', (req, res) => {
 });
 
 app.post('/api/cards', async (req, res) => {
-  const { name, barcode, format, color, notes, folder } = req.body || {};
+  const { name, barcode, format, color, notes, folder, lastUsed } = req.body || {};
   const value = String(barcode ?? '').trim();
   const cardName = String(name ?? '').trim();
 
@@ -63,6 +63,7 @@ app.post('/api/cards', async (req, res) => {
     color: typeof color === 'string' && color ? color : '#6366f1',
     folder: typeof folder === 'string' ? folder.trim() : '',
     notes: typeof notes === 'string' ? notes : '',
+    lastUsed: typeof lastUsed === 'string' && lastUsed ? lastUsed : null,
     createdAt: new Date().toISOString()
   };
 
@@ -81,6 +82,7 @@ app.put('/api/cards/:id', async (req, res) => {
   if (format !== undefined && typeof format === 'string' && format) cards[idx].format = format;
   if (color !== undefined && typeof color === 'string' && color) cards[idx].color = color;
   if (folder !== undefined) cards[idx].folder = typeof folder === 'string' ? folder.trim() : '';
+  if (lastUsed !== undefined) cards[idx].lastUsed = typeof lastUsed === 'string' && lastUsed ? lastUsed : null;
   if (notes !== undefined) cards[idx].notes = typeof notes === 'string' ? notes : '';
 
   await persistCards();
@@ -93,6 +95,27 @@ app.delete('/api/cards/:id', async (req, res) => {
   cards.splice(idx, 1);
   await persistCards();
   res.status(204).end();
+});
+
+app.post('/api/folders/rename', async (req, res) => {
+  const { from, to } = req.body || {};
+  const oldName = String(from ?? '').trim();
+  const newName = String(to ?? '').trim();
+  if (!oldName) return res.status(400).json({ error: 'Source folder is required' });
+  if (!newName) return res.status(400).json({ error: 'Folder name is required' });
+  if (oldName === newName) return res.status(400).json({ error: 'New name is the same' });
+
+  let renamed = 0;
+  cards.forEach((c) => {
+    if ((c.folder || '').trim() === oldName) {
+      c.folder = newName;
+      renamed++;
+    }
+  });
+  if (renamed === 0) return res.status(404).json({ error: 'Folder not found' });
+
+  await persistCards();
+  res.json({ renamed });
 });
 
 if (existsSync(STATIC_DIR)) {

@@ -32,3 +32,7 @@ export function updateCard(id, data) {
 export function deleteCard(id) {
   return request(`/api/cards/${id}`, { method: 'DELETE' });
 }
+
+export function renameFolder(from, to) {
+  return request('/api/folders/rename', { method: 'POST', body: JSON.stringify({ from, to }) });
+}
