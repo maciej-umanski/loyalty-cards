@@ -26,46 +26,81 @@ export function isSecureContext() {
   return window.isSecureContext === true;
 }
 
+const MAX_CAPTURE_WIDTH = 960;
+const SCAN_INTERVAL_MS = 220;
+
 export function startScanner(videoEl, onResult, onError) {
   const reader = new BrowserMultiFormatReader();
-  let controls = null;
   let stopped = false;
+  let stream = null;
+  let timerId = 0;
 
-  const callback = (result) => {
-    if (stopped) return;
-    if (result) {
-      const text = result.getText();
-      const format = formatName(result.getBarcodeFormat());
-      if (text) {
-        stop();
-        onResult({ text, format });
-      }
-    }
-  };
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
 
   function stop() {
+    if (stopped) return;
     stopped = true;
-    if (controls) {
-      try {
-        controls.stop();
-      } catch {
-        /* ignore */
-      }
+    clearTimeout(timerId);
+    if (stream) {
+      stream.getTracks().forEach((t) => t.stop());
+      stream = null;
     }
+    if (videoEl) videoEl.srcObject = null;
   }
 
-  reader
-    .decodeFromConstraints({ audio: false, video: { facingMode: 'environment' } }, videoEl, callback)
-    .then((c) => {
-      controls = c;
-      if (stopped) stop();
-    })
-    .catch((err) => {
-      if (!stopped) {
-        stopped = true;
-        onError(err);
+  function tick() {
+    if (stopped) return;
+
+    if (videoEl.readyState >= 2 && videoEl.videoWidth > 0) {
+      const vw = videoEl.videoWidth;
+      const vh = videoEl.videoHeight;
+      const scale = Math.min(1, MAX_CAPTURE_WIDTH / vw);
+      canvas.width = Math.round(vw * scale);
+      canvas.height = Math.round(vh * scale);
+      ctx.drawImage(videoEl, 0, 0, canvas.width, canvas.height);
+      try {
+        const result = reader.decodeFromCanvas(canvas);
+        if (result) {
+          const text = result.getText();
+          if (text) {
+            stop();
+            onResult({ text, format: formatName(result.getBarcodeFormat()) });
+            return;
+          }
+        }
+      } catch (e) {
+        // No barcode in this frame — keep scanning.
       }
+    }
+
+    timerId = setTimeout(tick, SCAN_INTERVAL_MS);
+  }
+
+  (async () => {
+    stream = await navigator.mediaDevices.getUserMedia({
+      audio: false,
+      video: { facingMode: 'environment' }
     });
+    if (stopped) {
+      stream.getTracks().forEach((t) => t.stop());
+      return;
+    }
+
+    videoEl.srcObject = stream;
+    try {
+      await videoEl.play();
+    } catch (e) {
+      // Some browsers reject play() on autoplay policy; frames still flow.
+    }
+
+    tick();
+  })().catch((err) => {
+    if (!stopped) {
+      stopped = true;
+      onError(err);
+    }
+  });
 
   return stop;
 }
