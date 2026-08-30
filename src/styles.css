@@ -380,19 +380,6 @@ main {
   resize: vertical;
 }
 
-.scan-row {
-  display: flex;
-  gap: 8px;
-}
-
-.scan-row .form__input {
-  flex: 1;
-}
-
-.scan-row .btn {
-  flex-shrink: 0;
-}
-
 .swatches {
   display: flex;
   flex-wrap: wrap;

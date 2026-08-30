@@ -10,8 +10,8 @@ const COLORS = ['#6366f1', '#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'
 
 let cards = [];
 let editingId = null;
-let scanStop = null;
 let toastTimer = null;
+let activeStopCamera = null;
 
 const h = (tag, className, text) => {
   const el = document.createElement(tag);
@@ -42,6 +42,8 @@ function openEdit(id) {
 }
 
 function backHome() {
+  if (activeStopCamera) activeStopCamera();
+  activeStopCamera = null;
   editingId = null;
   app.replaceChildren(buildHome());
   addBtn.style.display = '';
@@ -188,30 +190,23 @@ function buildForm(card = {}) {
   viewport.appendChild(placeholder);
   viewport.appendChild(frame);
 
-  const scanMsg = h('p', 'scanner__msg', 'Point the camera at the barcode');
-  scannerSection.appendChild(viewport);
-  scannerSection.appendChild(scanMsg);
-
   const scanStatus = h('p', 'scanner__status');
+  scannerSection.appendChild(viewport);
   scannerSection.appendChild(scanStatus);
+  form.appendChild(scannerSection);
 
   const scanBox = h('div', 'form__field');
-  scanBox.appendChild(h('label', 'form__label', 'Scan barcode (or enter manually)'));
-  const scanWrap = h('div', 'scan-row');
+  scanBox.appendChild(h('label', 'form__label', 'Barcode number'));
   const scanInput = h('input', 'form__input');
   scanInput.type = 'text';
   scanInput.placeholder = 'Barcode number';
   scanInput.value = value;
   scanInput.autocomplete = 'off';
-  const scanBtn = h('button', 'btn btn-primary', 'Scan');
-  scanBtn.addEventListener('click', (e) => {
-    e.preventDefault();
-    toggleScan(true);
-  });
-  scanWrap.appendChild(scanInput);
-  scanWrap.appendChild(scanBtn);
-  scanBox.appendChild(scanWrap);
+  scanBox.appendChild(scanInput);
   form.appendChild(scanBox);
+
+  const modeBtn = h('button', 'btn btn-ghost', '');
+  form.appendChild(modeBtn);
 
   const field = (labelText, input) => {
     const box = h('div', 'form__field');
@@ -258,7 +253,7 @@ function buildForm(card = {}) {
   const actions = h('div', 'form__actions');
   const cancel = h('button', 'btn btn-ghost', 'Cancel');
   cancel.addEventListener('click', () => {
-    if (scanStop) scanStop();
+    stopCamera();
     backHome();
   });
   const save = h('button', 'btn btn-primary', 'Save');
@@ -273,7 +268,7 @@ function buildForm(card = {}) {
     if (!data.name) return toast('Enter a card name');
     if (!data.barcode) return toast('Enter a barcode number');
     try {
-      if (scanStop) scanStop();
+      stopCamera();
       if (editingId) {
         const updated = await updateCard(editingId, data);
         cards = cards.map((c) => (c.id === editingId ? updated : c));
@@ -292,49 +287,61 @@ function buildForm(card = {}) {
   actions.appendChild(save);
   form.appendChild(actions);
 
+  let mode = card.name ? 'manual' : 'camera';
   let scanning = false;
-  function toggleScan(force) {
-    if (scanning || force === false) {
-      if (scanStop) scanStop();
-      scanning = false;
-      scanStop = null;
-      placeholder.hidden = false;
-      frame.hidden = true;
-      scanMsg.style.display = '';
-      scanBtn.textContent = 'Scan';
-      scanStatus.textContent = '';
-      return;
-    }
+  let scanStop = null;
 
+  function stopCamera() {
+    if (scanStop) scanStop();
+    scanStop = null;
+    scanning = false;
+  }
+  activeStopCamera = stopCamera;
+
+  function renderMode() {
+    const camera = mode === 'camera';
+    frame.hidden = !camera;
+    placeholder.hidden = camera;
+    scanBox.hidden = camera;
+    modeBtn.textContent = camera ? 'Enter manually' : 'Use camera';
+  }
+
+  function setMode(m) {
+    mode = m;
+    renderMode();
+  }
+
+  function startCamera() {
+    if (scanning) return;
     if (!supportsCamera()) {
       toast('Camera not supported in this browser');
+      setMode('manual');
       return;
     }
     if (!isSecureContext()) {
       toast('Camera needs HTTPS. Open the app over https://');
+      setMode('manual');
       return;
     }
 
     scanning = true;
-    scanBtn.textContent = 'Stop';
-    placeholder.hidden = true;
-    frame.hidden = false;
-    scanMsg.style.display = 'none';
-    scanStatus.textContent = 'Looking for barcode\u2026';
+    scanStatus.textContent = 'Starting camera\u2026';
 
     scanStop = startScanner(
       video,
       (result) => {
         scanInput.value = result.text;
         currentFormat = result.format;
+        stopCamera();
+        setMode('manual');
         scanStatus.textContent = `Found: ${result.text}`;
-        toggleScan(false);
         toast('Barcode captured');
       },
       (err) => {
         const msg = (err && err.message) ? err.message : String(err);
+        stopCamera();
+        setMode('manual');
         scanStatus.textContent = 'Camera error: ' + msg;
-        toggleScan(false);
         toast('Camera error: ' + msg);
       },
       (state) => {
@@ -342,6 +349,19 @@ function buildForm(card = {}) {
       }
     );
   }
+
+  modeBtn.addEventListener('click', () => {
+    if (mode === 'camera') {
+      stopCamera();
+      setMode('manual');
+    } else {
+      setMode('camera');
+      startCamera();
+    }
+  });
+
+  renderMode();
+  if (mode === 'camera') startCamera();
 
   return form;
 }
