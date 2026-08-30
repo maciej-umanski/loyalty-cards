@@ -111,7 +111,7 @@ main {
   min-width: 0;
 }
 
-.sort-select {
+.home-toolbar .sort-select {
   flex: 0 0 auto;
   width: auto;
   padding: 12px 34px 12px 14px;
