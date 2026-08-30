@@ -84,14 +84,10 @@ function buildHome() {
     tile.style.setProperty('--accent', card.color);
     tile.addEventListener('click', () => openDetail(card.id));
 
-    const bar = h('div', 'card-tile__barcode');
-    renderBarcode(bar, card, { height: 48 });
-
     const body = h('div', 'card-tile__body');
     body.appendChild(h('div', 'card-tile__name', card.name));
     body.appendChild(h('div', 'card-tile__num', card.barcode));
 
-    tile.appendChild(bar);
     tile.appendChild(body);
     root.appendChild(tile);
   });

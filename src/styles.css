@@ -118,16 +118,8 @@ main {
   border-top: 4px solid var(--accent);
 }
 
-.card-tile__barcode {
-  background: #fff;
-  padding: 8px 8px 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
 .card-tile__body {
-  padding: 4px 12px 12px;
+  padding: 14px 14px 16px;
   display: flex;
   flex-direction: column;
   gap: 3px;
