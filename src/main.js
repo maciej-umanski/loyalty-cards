@@ -170,10 +170,13 @@ function buildForm(card = {}) {
   const scannerSection = h('div', 'scanner');
   const viewport = h('div', 'scanner__viewport');
   const video = h('video', 'scanner__video');
+  video.autoplay = true;
+  video.muted = true;
+  video.playsInline = true;
   video.setAttribute('autoplay', '');
   video.setAttribute('muted', '');
-  video.setAttribute('playsinline', '');
-  video.muted = true;
+  video.setAttribute('playsinline', 'true');
+  video.setAttribute('webkit-playsinline', 'true');
   const placeholder = h('div', 'scanner__placeholder', '\uD83D\uDCF7 Camera preview');
   const frame = h('div', 'scanner__frame');
   [

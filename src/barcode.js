@@ -76,7 +76,15 @@ export function startScanner(videoEl, onResult, onError, onState) {
           return;
         }
       } catch (e) {
-        if (e instanceof NotFoundException || e instanceof ChecksumException || e instanceof FormatException) {
+        const errName = e && (e.name || e.constructor?.name);
+        if (
+            errName === 'NotFoundException' ||
+            errName === 'ChecksumException' ||
+            errName === 'FormatException' ||
+            e instanceof NotFoundException ||
+            e instanceof ChecksumException ||
+            e instanceof FormatException
+        ) {
           // No code (or partial) in this frame — keep scanning.
         } else {
           stop();
@@ -102,7 +110,6 @@ export function startScanner(videoEl, onResult, onError, onState) {
     try {
       stream = await navigator.mediaDevices.getUserMedia(constraints);
     } catch (e) {
-      // Fallback: some devices reject the ideal constraints.
       stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: true });
     }
     if (stopped) {
@@ -111,10 +118,10 @@ export function startScanner(videoEl, onResult, onError, onState) {
     }
 
     videoEl.srcObject = stream;
-    await new Promise((resolve) => {
-      if (videoEl.readyState >= 1) return resolve();
-      videoEl.addEventListener('loadedmetadata', resolve, { once: true });
-    });
+    videoEl.playsInline = true;
+    videoEl.setAttribute('playsinline', 'true');
+    videoEl.setAttribute('webkit-playsinline', 'true');
+
     try {
       await videoEl.play();
     } catch (e) {
