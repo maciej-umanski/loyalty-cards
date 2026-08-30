@@ -94,7 +94,21 @@ app.delete('/api/cards/:id', async (req, res) => {
 });
 
 if (existsSync(STATIC_DIR)) {
-  app.use(express.static(STATIC_DIR, { maxAge: '1h' }));
+  app.use(
+    express.static(STATIC_DIR, {
+      maxAge: '1y',
+      immutable: true,
+      setHeaders(res, filePath) {
+        if (
+          filePath.endsWith('index.html') ||
+          filePath.endsWith('sw.js') ||
+          filePath.endsWith('manifest.webmanifest')
+        ) {
+          res.setHeader('Cache-Control', 'no-cache');
+        }
+      }
+    })
+  );
   app.get(/^\/(?!api\/).*/, (req, res) => {
     res.sendFile(path.join(STATIC_DIR, 'index.html'));
   });

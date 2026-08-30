@@ -167,12 +167,12 @@ function buildForm(card = {}) {
 
   const scannerSection = h('div', 'scanner');
   const viewport = h('div', 'scanner__viewport');
-  const placeholder = h('div', 'scanner__placeholder', '\uD83D\uDCF7 Camera preview');
   const video = h('video', 'scanner__video');
   video.setAttribute('autoplay', '');
   video.setAttribute('muted', '');
   video.setAttribute('playsinline', '');
-  video.hidden = true;
+  video.muted = true;
+  const placeholder = h('div', 'scanner__placeholder', '\uD83D\uDCF7 Camera preview');
   const frame = h('div', 'scanner__frame');
   [
     ['tl', 'top', 'left'],
@@ -183,8 +183,9 @@ function buildForm(card = {}) {
     frame.appendChild(h('div', `frame-corner ${corner}`));
   });
   frame.appendChild(h('div', 'scanline'));
-  viewport.appendChild(placeholder);
+  frame.hidden = true;
   viewport.appendChild(video);
+  viewport.appendChild(placeholder);
   viewport.appendChild(frame);
 
   const scanMsg = h('p', 'scanner__msg', 'Point the camera at the barcode');
@@ -297,9 +298,8 @@ function buildForm(card = {}) {
       if (scanStop) scanStop();
       scanning = false;
       scanStop = null;
-      video.srcObject = null;
-      video.hidden = true;
       placeholder.hidden = false;
+      frame.hidden = true;
       scanMsg.style.display = '';
       scanBtn.textContent = 'Scan';
       scanStatus.textContent = '';
@@ -317,8 +317,8 @@ function buildForm(card = {}) {
 
     scanning = true;
     scanBtn.textContent = 'Stop';
-    video.hidden = false;
     placeholder.hidden = true;
+    frame.hidden = false;
     scanMsg.style.display = 'none';
     scanStatus.textContent = 'Looking for barcode\u2026';
 
@@ -332,9 +332,13 @@ function buildForm(card = {}) {
         toast('Barcode captured');
       },
       (err) => {
-        scanStatus.textContent = 'Camera error: ' + err.message;
+        const msg = (err && err.message) ? err.message : String(err);
+        scanStatus.textContent = 'Camera error: ' + msg;
         toggleScan(false);
-        toast('Camera error: ' + err.message);
+        toast('Camera error: ' + msg);
+      },
+      (state) => {
+        scanStatus.textContent = state;
       }
     );
   }

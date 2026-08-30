@@ -1,5 +1,5 @@
 import { BrowserMultiFormatReader } from '@zxing/browser';
-import { BarcodeFormat, BrowserQRCodeSvgWriter } from '@zxing/library';
+import { BarcodeFormat, BrowserQRCodeSvgWriter, NotFoundException, ChecksumException, FormatException } from '@zxing/library';
 import JsBarcode from 'jsbarcode';
 
 const JSBARCODE_FORMATS = {
@@ -27,74 +27,109 @@ export function isSecureContext() {
 }
 
 const MAX_CAPTURE_WIDTH = 960;
-const SCAN_INTERVAL_MS = 220;
+const SCAN_INTERVAL_MS = 200;
 
-export function startScanner(videoEl, onResult, onError) {
+export function startScanner(videoEl, onResult, onError, onState) {
   const reader = new BrowserMultiFormatReader();
   let stopped = false;
   let stream = null;
   let timerId = 0;
+  let noFrameTimer = 0;
 
   const canvas = document.createElement('canvas');
   const ctx = canvas.getContext('2d', { willReadFrequently: true });
+
+  const report = (msg) => {
+    if (onState) onState(msg);
+  };
 
   function stop() {
     if (stopped) return;
     stopped = true;
     clearTimeout(timerId);
+    clearTimeout(noFrameTimer);
     if (stream) {
       stream.getTracks().forEach((t) => t.stop());
       stream = null;
     }
-    if (videoEl) videoEl.srcObject = null;
+    if (videoEl) {
+      videoEl.pause();
+      videoEl.srcObject = null;
+    }
   }
 
-  function tick() {
+  function loop() {
     if (stopped) return;
 
     if (videoEl.readyState >= 2 && videoEl.videoWidth > 0) {
       const vw = videoEl.videoWidth;
       const vh = videoEl.videoHeight;
       const scale = Math.min(1, MAX_CAPTURE_WIDTH / vw);
-      canvas.width = Math.round(vw * scale);
-      canvas.height = Math.round(vh * scale);
+      canvas.width = Math.max(1, Math.round(vw * scale));
+      canvas.height = Math.max(1, Math.round(vh * scale));
       ctx.drawImage(videoEl, 0, 0, canvas.width, canvas.height);
       try {
         const result = reader.decodeFromCanvas(canvas);
-        if (result) {
-          const text = result.getText();
-          if (text) {
-            stop();
-            onResult({ text, format: formatName(result.getBarcodeFormat()) });
-            return;
-          }
+        if (result && result.getText()) {
+          stop();
+          onResult({ text: result.getText(), format: formatName(result.getBarcodeFormat()) });
+          return;
         }
       } catch (e) {
-        // No barcode in this frame — keep scanning.
+        if (e instanceof NotFoundException || e instanceof ChecksumException || e instanceof FormatException) {
+          // No code (or partial) in this frame — keep scanning.
+        } else {
+          stop();
+          onError(e);
+          return;
+        }
       }
     }
 
-    timerId = setTimeout(tick, SCAN_INTERVAL_MS);
+    timerId = setTimeout(loop, SCAN_INTERVAL_MS);
   }
 
   (async () => {
-    stream = await navigator.mediaDevices.getUserMedia({
+    report('Requesting camera\u2026');
+    const constraints = {
       audio: false,
-      video: { facingMode: 'environment' }
-    });
+      video: {
+        facingMode: { ideal: 'environment' },
+        width: { ideal: 1280 },
+        height: { ideal: 720 }
+      }
+    };
+    try {
+      stream = await navigator.mediaDevices.getUserMedia(constraints);
+    } catch (e) {
+      // Fallback: some devices reject the ideal constraints.
+      stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: true });
+    }
     if (stopped) {
       stream.getTracks().forEach((t) => t.stop());
       return;
     }
 
     videoEl.srcObject = stream;
+    await new Promise((resolve) => {
+      if (videoEl.readyState >= 1) return resolve();
+      videoEl.addEventListener('loadedmetadata', resolve, { once: true });
+    });
     try {
       await videoEl.play();
     } catch (e) {
-      // Some browsers reject play() on autoplay policy; frames still flow.
+      report('Play failed: ' + (e && e.message ? e.message : e));
     }
 
-    tick();
+    report('Camera on \u2014 point at barcode');
+    noFrameTimer = setTimeout(() => {
+      if (!stopped && videoEl.videoWidth === 0) {
+        stop();
+        onError(new Error('Camera connected but no video frames were received.'));
+      }
+    }, 6000);
+
+    loop();
   })().catch((err) => {
     if (!stopped) {
       stopped = true;
