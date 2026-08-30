@@ -1,0 +1,353 @@
+import './styles.css';
+import { listCards, createCard, updateCard, deleteCard } from './api.js';
+import { startScanner, renderBarcode, supportsCamera, isSecureContext } from './barcode.js';
+
+const app = document.getElementById('app');
+const addBtn = document.getElementById('add-btn');
+const toastEl = document.getElementById('toast');
+
+const COLORS = ['#6366f1', '#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6'];
+
+let cards = [];
+let editingId = null;
+let scanStop = null;
+let toastTimer = null;
+
+const h = (tag, className, text) => {
+  const el = document.createElement(tag);
+  if (className) el.className = className;
+  if (text !== undefined) el.textContent = text;
+  return el;
+};
+
+function toast(msg) {
+  toastEl.textContent = msg;
+  toastEl.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toastEl.classList.remove('show'), 2600);
+}
+
+function openAdd() {
+  editingId = null;
+  app.replaceChildren(buildForm());
+  addBtn.style.display = 'none';
+}
+
+function openEdit(id) {
+  const card = cards.find((c) => c.id === id);
+  if (!card) return;
+  editingId = id;
+  app.replaceChildren(buildForm(card));
+  addBtn.style.display = 'none';
+}
+
+function backHome() {
+  editingId = null;
+  app.replaceChildren(buildHome());
+  addBtn.style.display = '';
+}
+
+function escapeKey(e) {
+  if (e.key === 'Escape') backHome();
+}
+document.addEventListener('keydown', escapeKey);
+
+async function loadCards() {
+  try {
+    cards = await listCards();
+  } catch (err) {
+    cards = [];
+    toast('Could not load cards: ' + err.message);
+  }
+  renderHome();
+}
+
+/* ---------------- Home ---------------- */
+
+function buildHome() {
+  const root = document.createElement('div');
+  root.className = 'cards-grid';
+
+  if (cards.length === 0) {
+    const empty = h('div', 'empty');
+    empty.appendChild(h('div', 'empty-icon', '\uD83D\uDCB3'));
+    empty.appendChild(h('p', '', 'No cards yet.'));
+    empty.appendChild(h('p', '', 'Tap "Add card" to scan or enter a loyalty card.'));
+    root.appendChild(empty);
+    return root;
+  }
+
+  cards.forEach((card) => {
+    const tile = h('button', 'card-tile');
+    tile.style.setProperty('--accent', card.color);
+    tile.addEventListener('click', () => openDetail(card.id));
+
+    const bar = h('div', 'card-tile__barcode');
+    renderBarcode(bar, card, { height: 48 });
+
+    const body = h('div', 'card-tile__body');
+    body.appendChild(h('div', 'card-tile__name', card.name));
+    body.appendChild(h('div', 'card-tile__num', card.barcode));
+
+    tile.appendChild(bar);
+    tile.appendChild(body);
+    root.appendChild(tile);
+  });
+  return root;
+}
+
+function renderHome() {
+  app.replaceChildren(buildHome());
+}
+
+/* ---------------- Detail ---------------- */
+
+function openDetail(id) {
+  const card = cards.find((c) => c.id === id);
+  if (!card) return;
+  addBtn.style.display = 'none';
+
+  const detail = h('div', 'detail');
+  const head = h('div', 'detail__head');
+  const back = h('button', 'btn btn-ghost', '\u2190 Back');
+  back.addEventListener('click', () => {
+    backHome();
+  });
+  head.appendChild(back);
+  const title = h('h2', 'detail__title', card.name);
+  title.style.color = card.color;
+  head.appendChild(title);
+  detail.appendChild(head);
+
+  const barcodeBox = h('div', 'detail__barcode');
+  renderBarcode(barcodeBox, card, { height: 140 });
+  detail.appendChild(barcodeBox);
+  detail.appendChild(h('div', 'detail__num', card.barcode));
+
+  if (card.notes) detail.appendChild(h('p', 'detail__notes', card.notes));
+
+  const actions = h('div', 'detail__actions');
+  const edit = h('button', 'btn', 'Edit');
+  edit.addEventListener('click', () => openEdit(card.id));
+  const del = h('button', 'btn btn-danger', 'Delete');
+  del.addEventListener('click', () => confirmDelete(card));
+  actions.appendChild(edit);
+  actions.appendChild(del);
+  detail.appendChild(actions);
+
+  app.replaceChildren(detail);
+}
+
+async function confirmDelete(card) {
+  if (!confirm(`Delete "${card.name}"?`)) return;
+  try {
+    await deleteCard(card.id);
+    cards = cards.filter((c) => c.id !== card.id);
+    toast('Card deleted');
+    backHome();
+  } catch (err) {
+    toast('Delete failed: ' + err.message);
+  }
+}
+
+/* ---------------- Add / Edit form ---------------- */
+
+function buildForm(card = {}) {
+  const name = card.name || '';
+  const value = card.barcode || '';
+  const format = card.format || 'CODE_128';
+  const color = card.color || COLORS[0];
+  const notes = card.notes || '';
+
+  let currentFormat = format;
+
+  const form = h('div', 'form');
+  const title = h('h2', 'form__title', card.name ? 'Edit card' : 'Add card');
+  form.appendChild(title);
+
+  const scannerSection = h('div', 'scanner');
+  const viewport = h('div', 'scanner__viewport');
+  const placeholder = h('div', 'scanner__placeholder', '\uD83D\uDCF7 Camera preview');
+  const video = h('video', 'scanner__video');
+  video.setAttribute('autoplay', '');
+  video.setAttribute('muted', '');
+  video.setAttribute('playsinline', '');
+  video.hidden = true;
+  const frame = h('div', 'scanner__frame');
+  [
+    ['tl', 'top', 'left'],
+    ['tr', 'top', 'right'],
+    ['bl', 'bottom', 'left'],
+    ['br', 'bottom', 'right']
+  ].forEach(([corner]) => {
+    frame.appendChild(h('div', `frame-corner ${corner}`));
+  });
+  frame.appendChild(h('div', 'scanline'));
+  viewport.appendChild(placeholder);
+  viewport.appendChild(video);
+  viewport.appendChild(frame);
+
+  const scanMsg = h('p', 'scanner__msg', 'Point the camera at the barcode');
+  scannerSection.appendChild(viewport);
+  scannerSection.appendChild(scanMsg);
+
+  const scanStatus = h('p', 'scanner__status');
+  scannerSection.appendChild(scanStatus);
+
+  const scanBox = h('div', 'form__field');
+  scanBox.appendChild(h('label', 'form__label', 'Scan barcode (or enter manually)'));
+  const scanWrap = h('div', 'scan-row');
+  const scanInput = h('input', 'form__input');
+  scanInput.type = 'text';
+  scanInput.placeholder = 'Barcode number';
+  scanInput.value = value;
+  scanInput.autocomplete = 'off';
+  const scanBtn = h('button', 'btn btn-primary', 'Scan');
+  scanBtn.addEventListener('click', (e) => {
+    e.preventDefault();
+    toggleScan(true);
+  });
+  scanWrap.appendChild(scanInput);
+  scanWrap.appendChild(scanBtn);
+  scanBox.appendChild(scanWrap);
+  form.appendChild(scanBox);
+
+  const field = (labelText, input) => {
+    const box = h('div', 'form__field');
+    box.appendChild(h('label', 'form__label', labelText));
+    box.appendChild(input);
+    return box;
+  };
+
+  const nameInput = h('input', 'form__input');
+  nameInput.type = 'text';
+  nameInput.placeholder = 'e.g. My Supermarket';
+  nameInput.value = name;
+  nameInput.autocomplete = 'off';
+  nameInput.required = true;
+  form.appendChild(field('Card name', nameInput));
+
+  const colorBox = h('div', 'form__field');
+  colorBox.appendChild(h('label', 'form__label', 'Color'));
+  const swatches = h('div', 'swatches');
+  COLORS.forEach((c) => {
+    const s = h('button', 'swatch' + (c === color ? ' selected' : ''));
+    s.type = 'button';
+    s.style.background = c;
+    s.addEventListener('click', () => {
+      swatches.querySelectorAll('.swatch').forEach((x) => x.classList.remove('selected'));
+      s.classList.add('selected');
+      colorInput.value = c;
+    });
+    swatches.appendChild(s);
+  });
+  const colorInput = h('input', 'form__color-input');
+  colorInput.type = 'hidden';
+  colorInput.value = color;
+  colorBox.appendChild(swatches);
+  colorBox.appendChild(colorInput);
+  form.appendChild(colorBox);
+
+  const notesInput = h('textarea', 'form__input form__textarea');
+  notesInput.placeholder = 'Notes (optional)';
+  notesInput.rows = 2;
+  notesInput.value = notes;
+  form.appendChild(field('Notes', notesInput));
+
+  const actions = h('div', 'form__actions');
+  const cancel = h('button', 'btn btn-ghost', 'Cancel');
+  cancel.addEventListener('click', () => {
+    if (scanStop) scanStop();
+    backHome();
+  });
+  const save = h('button', 'btn btn-primary', 'Save');
+  save.addEventListener('click', async () => {
+    const data = {
+      name: nameInput.value.trim(),
+      barcode: scanInput.value.trim(),
+      format: currentFormat,
+      color: colorInput.value,
+      notes: notesInput.value.trim()
+    };
+    if (!data.name) return toast('Enter a card name');
+    if (!data.barcode) return toast('Enter a barcode number');
+    try {
+      if (scanStop) scanStop();
+      if (editingId) {
+        const updated = await updateCard(editingId, data);
+        cards = cards.map((c) => (c.id === editingId ? updated : c));
+        toast('Card updated');
+      } else {
+        const created = await createCard(data);
+        cards.push(created);
+        toast('Card added');
+      }
+      backHome();
+    } catch (err) {
+      toast('Save failed: ' + err.message);
+    }
+  });
+  actions.appendChild(cancel);
+  actions.appendChild(save);
+  form.appendChild(actions);
+
+  let scanning = false;
+  function toggleScan(force) {
+    if (scanning || force === false) {
+      if (scanStop) scanStop();
+      scanning = false;
+      scanStop = null;
+      video.srcObject = null;
+      video.hidden = true;
+      placeholder.hidden = false;
+      scanMsg.style.display = '';
+      scanBtn.textContent = 'Scan';
+      scanStatus.textContent = '';
+      return;
+    }
+
+    if (!supportsCamera()) {
+      toast('Camera not supported in this browser');
+      return;
+    }
+    if (!isSecureContext()) {
+      toast('Camera needs HTTPS. Open the app over https://');
+      return;
+    }
+
+    scanning = true;
+    scanBtn.textContent = 'Stop';
+    video.hidden = false;
+    placeholder.hidden = true;
+    scanMsg.style.display = 'none';
+    scanStatus.textContent = 'Looking for barcode\u2026';
+
+    scanStop = startScanner(
+      video,
+      (result) => {
+        scanInput.value = result.text;
+        currentFormat = result.format;
+        scanStatus.textContent = `Found: ${result.text}`;
+        toggleScan(false);
+        toast('Barcode captured');
+      },
+      (err) => {
+        scanStatus.textContent = 'Camera error: ' + err.message;
+        toggleScan(false);
+        toast('Camera error: ' + err.message);
+      }
+    );
+  }
+
+  return form;
+}
+
+/* ---------------- Init ---------------- */
+
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/sw.js').catch(() => {});
+}
+
+addBtn.addEventListener('click', openAdd);
+
+loadCards();

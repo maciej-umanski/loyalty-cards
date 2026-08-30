@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Loyalty Cards</title>
+  <meta name="description" content="Your loyalty cards, always at hand." />
+  <meta name="theme-color" content="#0f172a" />
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <link rel="icon" href="/icons/icon-192.png" type="image/png" />
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Loyalty Cards" />
+</head>
+<body>
+  <header class="app-header">
+    <h1>Loyalty Cards</h1>
+    <button id="add-btn" class="btn btn-primary" aria-label="Add card">+ Add card</button>
+  </header>
+
+  <main id="app"></main>
+
+  <div id="toast" class="toast" role="status"></div>
+
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>

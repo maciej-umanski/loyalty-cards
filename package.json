@@ -1,0 +1,23 @@
+{
+  "name": "loyalty-cards",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Self-hosted PWA loyalty card holder",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "start": "node server.mjs",
+    "icons": "node scripts/generate-icons.mjs"
+  },
+  "dependencies": {
+    "express": "^4.21.2"
+  },
+  "devDependencies": {
+    "@zxing/browser": "^0.1.5",
+    "@zxing/library": "^0.21.3",
+    "jsbarcode": "^3.12.3",
+    "sharp": "^0.33.5",
+    "vite": "^6.0.0"
+  }
+}
