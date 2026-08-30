@@ -1,5 +1,5 @@
 import { BrowserMultiFormatReader } from '@zxing/browser';
-import { BarcodeFormat, BrowserQRCodeSvgWriter, NotFoundException, ChecksumException, FormatException } from '@zxing/library';
+import { BarcodeFormat, BrowserQRCodeSvgWriter, DecodeHintType, NotFoundException, ChecksumException, FormatException } from '@zxing/library';
 import JsBarcode from 'jsbarcode';
 
 const JSBARCODE_FORMATS = {
@@ -29,8 +29,24 @@ export function isSecureContext() {
 const MAX_CAPTURE_WIDTH = 960;
 const SCAN_INTERVAL_MS = 200;
 
+const SCAN_FORMATS = [
+  BarcodeFormat.CODE_128,
+  BarcodeFormat.EAN_13,
+  BarcodeFormat.EAN_8,
+  BarcodeFormat.UPC_A,
+  BarcodeFormat.UPC_E,
+  BarcodeFormat.CODE_39,
+  BarcodeFormat.CODE_93,
+  BarcodeFormat.ITF,
+  BarcodeFormat.CODABAR,
+  BarcodeFormat.QR_CODE
+];
+
+const SCAN_HINTS = new Map();
+SCAN_HINTS.set(DecodeHintType.POSSIBLE_FORMATS, SCAN_FORMATS);
+
 export function startScanner(videoEl, onResult, onError, onState) {
-  const reader = new BrowserMultiFormatReader();
+  const reader = new BrowserMultiFormatReader(SCAN_HINTS);
   let stopped = false;
   let stream = null;
   let timerId = 0;
@@ -60,41 +76,42 @@ export function startScanner(videoEl, onResult, onError, onState) {
 
   function loop() {
     if (stopped) return;
+    let found = false;
 
-    if (videoEl.readyState >= 2 && videoEl.videoWidth > 0) {
-      const vw = videoEl.videoWidth;
-      const vh = videoEl.videoHeight;
-      const scale = Math.min(1, MAX_CAPTURE_WIDTH / vw);
-      canvas.width = Math.max(1, Math.round(vw * scale));
-      canvas.height = Math.max(1, Math.round(vh * scale));
-      ctx.drawImage(videoEl, 0, 0, canvas.width, canvas.height);
-      try {
+    try {
+      if (videoEl.readyState >= 2 && videoEl.videoWidth > 0) {
+        const vw = videoEl.videoWidth;
+        const vh = videoEl.videoHeight;
+        const scale = Math.min(1, MAX_CAPTURE_WIDTH / vw);
+        canvas.width = Math.max(1, Math.round(vw * scale));
+        canvas.height = Math.max(1, Math.round(vh * scale));
+        ctx.drawImage(videoEl, 0, 0, canvas.width, canvas.height);
         const result = reader.decodeFromCanvas(canvas);
         if (result && result.getText()) {
+          found = true;
           stop();
           onResult({ text: result.getText(), format: formatName(result.getBarcodeFormat()) });
-          return;
         }
-      } catch (e) {
-        const errName = e && (e.name || e.constructor?.name);
-        if (
-            errName === 'NotFoundException' ||
-            errName === 'ChecksumException' ||
-            errName === 'FormatException' ||
-            e instanceof NotFoundException ||
-            e instanceof ChecksumException ||
-            e instanceof FormatException
-        ) {
-          // No code (or partial) in this frame — keep scanning.
-        } else {
-          stop();
-          onError(e);
-          return;
-        }
+      }
+    } catch (e) {
+      const errName = e && (e.name || (e.constructor && e.constructor.name));
+      if (
+        errName === 'NotFoundException' ||
+        errName === 'ChecksumException' ||
+        errName === 'FormatException' ||
+        e instanceof NotFoundException ||
+        e instanceof ChecksumException ||
+        e instanceof FormatException
+      ) {
+        // No code (or partial) in this frame — keep scanning.
+      } else {
+        stop();
+        onError(e);
+        return;
       }
     }
 
-    timerId = setTimeout(loop, SCAN_INTERVAL_MS);
+    if (!found) timerId = setTimeout(loop, SCAN_INTERVAL_MS);
   }
 
   (async () => {
