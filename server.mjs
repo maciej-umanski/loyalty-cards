@@ -48,7 +48,7 @@ app.get('/api/cards', (req, res) => {
 });
 
 app.post('/api/cards', async (req, res) => {
-  const { name, barcode, format, color, notes } = req.body || {};
+  const { name, barcode, format, color, notes, folder } = req.body || {};
   const value = String(barcode ?? '').trim();
   const cardName = String(name ?? '').trim();
 
@@ -61,6 +61,7 @@ app.post('/api/cards', async (req, res) => {
     barcode: value,
     format: typeof format === 'string' && format ? format : 'CODE_128',
     color: typeof color === 'string' && color ? color : '#6366f1',
+    folder: typeof folder === 'string' ? folder.trim() : '',
     notes: typeof notes === 'string' ? notes : '',
     createdAt: new Date().toISOString()
   };
@@ -74,11 +75,12 @@ app.put('/api/cards/:id', async (req, res) => {
   const idx = cards.findIndex((c) => c.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'Card not found' });
 
-  const { name, barcode, format, color, notes } = req.body || {};
+  const { name, barcode, format, color, notes, folder } = req.body || {};
   if (name !== undefined && String(name).trim()) cards[idx].name = String(name).trim();
   if (barcode !== undefined && String(barcode).trim()) cards[idx].barcode = String(barcode).trim();
   if (format !== undefined && typeof format === 'string' && format) cards[idx].format = format;
   if (color !== undefined && typeof color === 'string' && color) cards[idx].color = color;
+  if (folder !== undefined) cards[idx].folder = typeof folder === 'string' ? folder.trim() : '';
   if (notes !== undefined) cards[idx].notes = typeof notes === 'string' ? notes : '';
 
   await persistCards();

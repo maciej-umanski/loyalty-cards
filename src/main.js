@@ -6,12 +6,18 @@ const app = document.getElementById('app');
 const addBtn = document.getElementById('add-btn');
 const toastEl = document.getElementById('toast');
 
-const COLORS = ['#6366f1', '#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6'];
+const COLORS = ['#6366f1', '#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6', '#000000', '#ffffff'];
 
 let cards = [];
 let editingId = null;
 let toastTimer = null;
 let activeStopCamera = null;
+let activeFolder = null;
+let searchQuery = '';
+let homeGridEl = null;
+let folderBarEl = null;
+
+const UNFILED = '\u0000unfiled';
 
 const h = (tag, className, text) => {
   const el = document.createElement(tag);
@@ -67,31 +73,114 @@ async function loadCards() {
 /* ---------------- Home ---------------- */
 
 function buildHome() {
-  const root = document.createElement('div');
-  root.className = 'cards-grid';
+  activeFolder = null;
+  searchQuery = '';
 
-  if (cards.length === 0) {
+  const root = document.createElement('div');
+  root.className = 'home';
+
+  const searchBox = h('div', 'search');
+  const searchInput = h('input', 'search__input');
+  searchInput.type = 'search';
+  searchInput.placeholder = 'Search cards\u2026';
+  searchInput.autocomplete = 'off';
+  searchInput.value = searchQuery;
+  searchInput.addEventListener('input', () => {
+    searchQuery = searchInput.value;
+    renderGrid();
+    renderFolderBar();
+  });
+  searchBox.appendChild(searchInput);
+  root.appendChild(searchBox);
+
+  folderBarEl = h('div', 'folder-bar');
+  root.appendChild(folderBarEl);
+  renderFolderBar();
+
+  homeGridEl = h('div', 'cards-grid');
+  root.appendChild(homeGridEl);
+  renderGrid();
+
+  return root;
+}
+
+function collectFolders() {
+  const map = new Map();
+  cards.forEach((c) => {
+    const f = (c.folder || '').trim();
+    map.set(f, (map.get(f) || 0) + 1);
+  });
+  return [...map.entries()];
+}
+
+function renderFolderBar() {
+  if (!folderBarEl) return;
+  folderBarEl.replaceChildren();
+
+  const chip = (label, value, count) => {
+    const c = h('button', 'folder-chip' + (activeFolder === value ? ' selected' : ''), label);
+    c.dataset.folder = value === null ? 'all' : value === UNFILED ? 'unfiled' : value;
+    if (count !== undefined) c.appendChild(h('span', 'folder-chip__count', String(count)));
+    c.addEventListener('click', () => {
+      activeFolder = value;
+      renderFolderBar();
+      renderGrid();
+    });
+    return c;
+  };
+
+  folderBarEl.appendChild(chip('All', null, cards.length));
+  const unfiled = collectFolders().find(([f]) => f === '')?.[1];
+  if (unfiled) folderBarEl.appendChild(chip('Unfiled', UNFILED, unfiled));
+  collectFolders().forEach(([f, n]) => {
+    if (f !== '') folderBarEl.appendChild(chip(f, f, n));
+  });
+}
+
+function filteredCards() {
+  const q = searchQuery.trim().toLowerCase();
+  return cards.filter((c) => {
+    const folder = (c.folder || '').trim();
+    if (activeFolder === UNFILED && folder !== '') return false;
+    if (activeFolder && activeFolder !== UNFILED && folder !== activeFolder) return false;
+    if (!q) return true;
+    return `${c.name} ${c.barcode} ${c.notes || ''} ${folder}`.toLowerCase().includes(q);
+  });
+}
+
+function renderGrid() {
+  if (!homeGridEl) return;
+  const filtered = filteredCards();
+  homeGridEl.replaceChildren();
+
+  if (filtered.length === 0) {
     const empty = h('div', 'empty');
-    empty.appendChild(h('div', 'empty-icon', '\uD83D\uDCB3'));
-    empty.appendChild(h('p', '', 'No cards yet.'));
-    empty.appendChild(h('p', '', 'Tap "Add card" to scan or enter a loyalty card.'));
-    root.appendChild(empty);
-    return root;
+    if (cards.length === 0) {
+      empty.appendChild(h('div', 'empty-icon', '\uD83D\uDCB3'));
+      empty.appendChild(h('p', '', 'No cards yet.'));
+      empty.appendChild(h('p', '', 'Tap "Add card" to scan or enter a loyalty card.'));
+    } else {
+      empty.appendChild(h('div', 'empty-icon', '\uD83D\uDCF0'));
+      empty.appendChild(h('p', '', 'No matching cards.'));
+    }
+    homeGridEl.appendChild(empty);
+    return;
   }
 
-  cards.forEach((card) => {
-    const tile = h('button', 'card-tile');
-    tile.style.setProperty('--accent', card.color);
-    tile.addEventListener('click', () => openDetail(card.id));
+  filtered.forEach((card) => homeGridEl.appendChild(buildTile(card)));
+}
 
-    const body = h('div', 'card-tile__body');
-    body.appendChild(h('div', 'card-tile__name', card.name));
-    body.appendChild(h('div', 'card-tile__num', card.barcode));
+function buildTile(card) {
+  const tile = h('button', 'card-tile');
+  tile.style.setProperty('--accent', card.color);
+  tile.addEventListener('click', () => openDetail(card.id));
 
-    tile.appendChild(body);
-    root.appendChild(tile);
-  });
-  return root;
+  const body = h('div', 'card-tile__body');
+  body.appendChild(h('div', 'card-tile__name', card.name));
+  body.appendChild(h('div', 'card-tile__num', card.barcode));
+
+  tile.appendChild(body);
+  return tile;
 }
 
 function renderHome() {
@@ -113,7 +202,7 @@ function openDetail(id) {
   });
   head.appendChild(back);
   const title = h('h2', 'detail__title', card.name);
-  title.style.color = card.color;
+  if (card.color && card.color !== '#000000') title.style.color = card.color;
   head.appendChild(title);
   detail.appendChild(head);
 
@@ -228,6 +317,7 @@ function buildForm(card = {}) {
   COLORS.forEach((c) => {
     const s = h('button', 'swatch' + (c === color ? ' selected' : ''));
     s.type = 'button';
+    s.dataset.color = c;
     s.style.background = c;
     s.addEventListener('click', () => {
       swatches.querySelectorAll('.swatch').forEach((x) => x.classList.remove('selected'));
@@ -242,6 +332,34 @@ function buildForm(card = {}) {
   colorBox.appendChild(swatches);
   colorBox.appendChild(colorInput);
   form.appendChild(colorBox);
+
+  const folderBox = h('div', 'form__field');
+  folderBox.appendChild(h('label', 'form__label', 'Folder'));
+  const folderSelect = h('select', 'form__input form__select');
+  const mkOption = (v, label) => {
+    const o = h('option', '', label);
+    o.value = v;
+    return o;
+  };
+  folderSelect.appendChild(mkOption('', 'No folder'));
+  const existingFolders = [...new Set(cards.map((c) => (c.folder || '').trim()).filter(Boolean))];
+  existingFolders.forEach((f) => folderSelect.appendChild(mkOption(f, f)));
+  folderSelect.appendChild(mkOption('__new', 'New folder\u2026'));
+  const currentFolder = (card.folder || '').trim();
+  folderSelect.value = currentFolder && existingFolders.includes(currentFolder) ? currentFolder : '';
+  const newFolderInput = h('input', 'form__input');
+  newFolderInput.type = 'text';
+  newFolderInput.placeholder = 'Folder name';
+  newFolderInput.maxLength = 50;
+  newFolderInput.hidden = true;
+  folderSelect.addEventListener('change', () => {
+    const isNew = folderSelect.value === '__new';
+    newFolderInput.hidden = !isNew;
+    if (!isNew) newFolderInput.value = '';
+  });
+  folderBox.appendChild(folderSelect);
+  folderBox.appendChild(newFolderInput);
+  form.appendChild(folderBox);
 
   const notesInput = h('textarea', 'form__input form__textarea');
   notesInput.placeholder = 'Notes (optional)';
@@ -262,6 +380,7 @@ function buildForm(card = {}) {
       barcode: scanInput.value.trim(),
       format: currentFormat,
       color: colorInput.value,
+      folder: folderSelect.value === '__new' ? newFolderInput.value.trim() : folderSelect.value,
       notes: notesInput.value.trim()
     };
     if (!data.name) return toast('Enter a card name');
