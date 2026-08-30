@@ -17,8 +17,6 @@ let searchQuery = '';
 let homeGridEl = null;
 let folderBarEl = null;
 
-const UNFILED = '\u0000unfiled';
-
 const h = (tag, className, text) => {
   const el = document.createElement(tag);
   if (className) el.className = className;
@@ -119,7 +117,7 @@ function renderFolderBar() {
 
   const chip = (label, value, count) => {
     const c = h('button', 'folder-chip' + (activeFolder === value ? ' selected' : ''), label);
-    c.dataset.folder = value === null ? 'all' : value === UNFILED ? 'unfiled' : value;
+    c.dataset.folder = value === null ? 'all' : value;
     if (count !== undefined) c.appendChild(h('span', 'folder-chip__count', String(count)));
     c.addEventListener('click', () => {
       activeFolder = value;
@@ -130,8 +128,6 @@ function renderFolderBar() {
   };
 
   folderBarEl.appendChild(chip('All', null, cards.length));
-  const unfiled = collectFolders().find(([f]) => f === '')?.[1];
-  if (unfiled) folderBarEl.appendChild(chip('Unfiled', UNFILED, unfiled));
   collectFolders().forEach(([f, n]) => {
     if (f !== '') folderBarEl.appendChild(chip(f, f, n));
   });
@@ -141,8 +137,7 @@ function filteredCards() {
   const q = searchQuery.trim().toLowerCase();
   return cards.filter((c) => {
     const folder = (c.folder || '').trim();
-    if (activeFolder === UNFILED && folder !== '') return false;
-    if (activeFolder && activeFolder !== UNFILED && folder !== activeFolder) return false;
+    if (activeFolder && folder !== activeFolder) return false;
     if (!q) return true;
     return `${c.name} ${c.barcode} ${c.notes || ''} ${folder}`.toLowerCase().includes(q);
   });
@@ -314,18 +309,35 @@ function buildForm(card = {}) {
   const colorBox = h('div', 'form__field');
   colorBox.appendChild(h('label', 'form__label', 'Color'));
   const swatches = h('div', 'swatches');
+
+  const setSelected = (el) => {
+    swatches.querySelectorAll('.swatch').forEach((x) => x.classList.remove('selected'));
+    el.classList.add('selected');
+  };
+
   COLORS.forEach((c) => {
     const s = h('button', 'swatch' + (c === color ? ' selected' : ''));
     s.type = 'button';
     s.dataset.color = c;
     s.style.background = c;
     s.addEventListener('click', () => {
-      swatches.querySelectorAll('.swatch').forEach((x) => x.classList.remove('selected'));
-      s.classList.add('selected');
+      setSelected(s);
+      colorPicker.value = c;
       colorInput.value = c;
     });
     swatches.appendChild(s);
   });
+
+  const colorPicker = h('input', 'swatch swatch-picker');
+  colorPicker.type = 'color';
+  colorPicker.value = color;
+  colorPicker.addEventListener('input', () => {
+    setSelected(colorPicker);
+    colorInput.value = colorPicker.value;
+  });
+  if (!COLORS.includes(color)) setSelected(colorPicker);
+  swatches.appendChild(colorPicker);
+
   const colorInput = h('input', 'form__color-input');
   colorInput.type = 'hidden';
   colorInput.value = color;
