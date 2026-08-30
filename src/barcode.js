@@ -1,6 +1,7 @@
 import { BrowserMultiFormatReader } from '@zxing/browser';
 import { BarcodeFormat, BrowserQRCodeSvgWriter, DecodeHintType, NotFoundException, ChecksumException, FormatException } from '@zxing/library';
 import JsBarcode from 'jsbarcode';
+import pdf417gen from 'pdf417-generator';
 
 const JSBARCODE_FORMATS = {
   EAN_13: 'EAN13',
@@ -39,7 +40,8 @@ const SCAN_FORMATS = [
   BarcodeFormat.CODE_93,
   BarcodeFormat.ITF,
   BarcodeFormat.CODABAR,
-  BarcodeFormat.QR_CODE
+  BarcodeFormat.QR_CODE,
+  BarcodeFormat.PDF_417
 ];
 
 const SCAN_HINTS = new Map();
@@ -174,6 +176,23 @@ export function renderBarcode(container, card, { height = 80 } = {}) {
     svg.style.width = '100%';
     svg.style.height = 'auto';
     container.appendChild(svg);
+    return;
+  }
+
+  if (card.format === 'PDF_417') {
+    const canvas = document.createElement('canvas');
+    try {
+      pdf417gen.PDF417.draw(card.barcode, canvas, 2, -1, undefined, '#0f172a');
+      canvas.style.width = '100%';
+      canvas.style.height = 'auto';
+      canvas.style.background = '#ffffff';
+      container.appendChild(canvas);
+    } catch (err) {
+      const span = document.createElement('div');
+      span.className = 'barcode-fallback';
+      span.textContent = card.barcode;
+      container.appendChild(span);
+    }
     return;
   }
 
